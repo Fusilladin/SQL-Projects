@@ -1,0 +1,516 @@
+Braintree SQL Challenge:
+------------------------
+
+https://github.com/Git-with-moiz/Braintree_SQL_Challenge
+
+----
+
+0. first step was opening each of the 4 csv files in github and copy pasting the raw data and then saving them as a csv to my computer in the project folder. Then using the SQL Server data import task I imported all 4 files using Flat File Source and SQL Server Native Client 10.0 Destination. Each csv file created a new table within the Braintree database. 
+
+Data Import Task Error Handling:
+countries.csv was getting an error during the data import task due to truncation issues with the country_name column, so I went into the Design window for the dbo.countries and then adjusted the datatype for country_name from varchar(50) to nvarchar(255) to be able to hold more chars in the country_name. Then in the column mappings in the data import task I adjusted the country_name datatype too nvarchar and size 255 as well, then re-executed the task. Since it failed again and had an Error message saying there was already a dbo.countries table, I went back in the import task and made sure under mappings that the 'Create destination table' was unchecked and the 'Append rows to the destination table' was checked. Then re-executed. Still didn't work so I realized that I needed to change the data type in the destination part of the data import task so I went into the Advanced part of the Data Source and changed country_name DataType to Unicode String [DT_WSTR] and OutputColumnWidth to 255. After doing that the data went through correctly and was now in the table in SSMS.
+----
+
+1. Data Integrity Checking & Cleanup
+a) Alphabetically list all of the country codes in the continent_map table that appear more than once. 
+b) Display any values where country_code is null as country_code = "FOO" and make this row appear first in the list
+c) For all countries that have multiple rows in the continent_map table, delete all multiple records leaving only the 1 record per country. The record that you keep should be the first one when sorted by the continent_code alphabetically ascending. 
+
+a) I did a SELECT TOP 1000 rows to bring up the data and then started adjusting the query. First was to put in a HAVING clause at the end because it is an aggregate column. HAVING COUNT(country_code) > 1. Then since the query wouldn't run just like that I had to change it to:
+SELECT  [country_code]
+	,COUNT([country_code])
+  FROM [Braintree].[dbo].[continent_map]
+  GROUP BY [country_code]
+  HAVING COUNT(country_code) > 1
+	
+b) To find all of the NULL country_code values i did:
+SELECT  [country_code]
+      ,[continent_code]
+	FROM [Braintree].[dbo].[continent_map]
+	WHERE country_code = ''
+
+Then to change them from NULL to 'FOO' I did:
+--UPDATE [continent_map]
+SET [country_code] = 'FOO'
+--SELECT [country_code]  
+	FROM [Braintree].[dbo].[continent_map]
+	WHERE country_code = ''
+
+I highlighted the UPDATE statement through to the WHERE to update the table then selected the SELECT statement to see my updates
+--SELECT [country_code] 
+	FROM [Braintree].[dbo].[continent_map]
+	WHERE country_code = '' -- 'FOO'
+
+Then to make the FOO columns come up first I added a [key] column 
+ALTER TABLE [continent_map]
+ADD [key] INT
+
+and numbered the FOO columns 1-4:
+DECLARE @n1 INT
+SET @n1 = 0
+UPDATE [continent_map]
+SET [key] = @n1
+	,@n1 = @n1 + 1
+--SELECT * FROM [continent_map]
+WHERE country_code = 'FOO'
+
+Then to number the rest of the rows I did 
+DECLARE @n1 INT
+SET @n1 = 4
+UPDATE [continent_map]
+SET [key] = @n1
+	,@n1 = @n1 + 1
+--SELECT * FROM [continent_map]
+--ORDER BY [key]
+WHERE country_code != 'FOO'
+
+And checked the list after using the ORDER BY statement to pull the 'FOO' country_codes first and then the rest of the records.
+
+c) First checked all the records with more than 1 record:
+SELECT [country_code]
+	,COUNT([country_code]) AS Quantity
+FROM [continent_map]
+GROUP BY [country_code]
+HAVING COUNT(country_code) > 1
+
+then copy pasted those records into another query to find all of the country codes listed in alphabetical order by their continent codes:
+SELECT [country_code]	
+	,[continent_code]
+FROM [continent_map]
+WHERE [country_code] IN (
+		'ARM','AZE','CYP','FOO','GEO','KAZ','RUS','TUR','UMI'
+		)
+ORDER BY [country_code]
+	,[continent_code]
+
+Next was to Delete the additional records so I had to Partition them by the number of country_codes then order them by continent:
+WITH countryCTE AS 
+(
+	SELECT *, ROW_NUMBER() OVER(Partition BY [country_code] ORDER BY [country_code],[continent_code]) AS RowNumber
+	FROM continent_map
+)
+SELECT * FROM countryCTE
+
+Then delete anything with RowNumber greater than 1:
+WITH countryCTE AS 
+(
+	SELECT *, ROW_NUMBER() OVER(Partition BY [country_code] ORDER BY [country_code],[continent_code]) AS RowNumber
+	FROM continent_map
+)
+DELETE FROM countryCTE WHERE RowNumber > 1
+
+Then I go back up and SELECT the country_codes listed and they come up only once. 
+
+----
+
+2. List the countries ranked 10-12 in each continent 
+	by the percent of year-over-year growth 
+	descending 
+	from 2011 to 2012.
+
+The percent of growth should be calculated as:
+	 ((2012 gdp - 2011 gdp) / 2011 gdp)
+The list should include the columns:
+    rank
+    continent_name
+    country_code
+    country_name
+    growth_percent
+
+First step is going through my object explorer and looking for which tables have all of the columns I need.
+It appears I need to join all 4 tables together to get every column needed:
+SELECT [coun].[country_name]	
+	,[con].[continent_name]
+	,[cap].[year]
+	,[cap].[gdp_per_capita]
+FROM [dbo].[continents] AS con
+INNER JOIN  [dbo].[continent_map] AS map
+ON [con].[continent_code] = map.continent_code
+INNER JOIN [dbo].[countries] AS coun
+ON [coun].[country_code] = [map].[country_code]
+INNER JOIN [dbo].[per_capita] AS cap
+ON [cap].[country_code] = [coun].[country_code]
+
+Next is to pull just those years necessary with a WHERE clause
+WHERE [cap].[year] IN (2011,2012)
+
+When trying to do mathematical calculations I realized that I need to change my column datatypes so:
+ALTER TABLE [per_capita]
+ALTER column [year] INT
+
+ALTER TABLE [per_capita]
+ALTER column [gdp_per_capita] FLOAT
+
+For this next part I used the CASE statement as well as jopining 2 CTEs together, CASTing datatypes and doing multiple joins and well as partitioning and aggregate functions. There are multiple ways to accomplish this such as using a self join or temporary table, but this is the approach I took
+
+WITH CTE_Capita AS (
+SELECT country_code
+,SUM(CASE
+	WHEN [year] = 2011 THEN gdp_per_capita
+	ELSE 0
+END) AS '2011'
+,SUM(CASE
+	WHEN [year] = 2012 THEN gdp_per_capita
+	ELSE 0
+END) AS '2012'
+FROM per_capita
+WHERE [year] IN (2011,2012)
+GROUP BY [country_code]
+)
+,CTE_Aggr AS (
+SELECT  [coun].[country_name]
+	,[cont].[continent_name]
+	,[cte].[country_code] 
+	,CASE
+		WHEN 2011 = 0
+		THEN 0
+		WHEN 2011 != 0
+		THEN ROUND(([2012] - [2011]) / [2011],2)
+		ELSE 0
+	END AS Total
+	,ROW_NUMBER() OVER(
+		Partition BY [cont].[continent_name] 
+		ORDER BY 
+				CASE
+					WHEN 2011 = 0
+					THEN 0
+					WHEN 2011 != 0
+					THEN ([2012] - [2011]) / [2011]
+					ELSE 0
+				END 
+		) AS 'Rank'
+FROM CTE_Capita AS cte
+INNER JOIN [countries] AS coun
+ON [coun].country_code = cte.country_code
+INNER JOIN [continent_map] as map
+ON [map].country_code = [coun].country_code
+INNER JOIN [continents] AS cont
+ON [cont].[continent_code] = [map].[continent_code]
+WHERE [2011] != 0
+AND [2012] != 0
+)
+SELECT [continent_name]
+	,[country_name]
+	,[Rank]
+	,CONCAT(CAST([Total] AS NVARCHAR(255)),'%') AS 'YOY Growth'
+FROM CTE_Capita AS Cap
+INNER JOIN CTE_Aggr AS Aggr
+ON Aggr.country_code = cap.country_code
+WHERE [Rank] 
+BETWEEN 10 AND 12
+ORDER BY [continent_name],[Rank]
+
+3. For the year 2012, create a 3 column, 1 row report showing the percent share of gdp_per_capita for the following regions:
+	United Arab Emirates
+	Switzerland
+	Algeria
+	Germany
+
+First find the country codes
+SELECT * 
+FROM countries
+WHERE country_name in ('United Arab Emirates'
+	,'Switzerland'
+	,'Algeria'
+	,'Germany'
+	)
+/*
+ARE
+CHE
+DEU
+DZA
+*/
+
+Then had to make 2 seperate CTE's to contain to aggr SUM functions of the total and regional total to then put them together in a mathematicals equation in the last part of the query and SELECT TOP 1 so that only 1 row shows up becuase every row was the same anyway.
+WITH CTE_Total AS (
+SELECT
+	 [year]
+	,SUM(gdp_per_capita) AS 'Total'
+FROM per_capita
+WHERE year = 2012
+GROUP BY year
+)
+
+,CTE_Aggr AS (
+SELECT
+	 SUM(g.gdp_per_capita) AS 'Regional Total'
+	,g.[year]
+FROM CTE_Total
+INNER JOIN per_capita AS g
+ON g.[year] = CTE_Total.[year]
+WHERE g.country_code in (
+						 'ARE'
+						,'CHE'
+						,'DEU'
+						,'DZA'
+						)
+AND g.[year] = 2012
+GROUP BY g.[year]
+)
+
+SELECT TOP 1
+	 FORMAT(t.Total,'$###,###.00') AS 'Total'
+	,FORMAT(a.[Regional Total],'$###,###.00') AS 'Regional Total'
+	,FORMAT((a.[Regional Total]/t.total),'##.00%') 'Regional % of Total'
+FROM CTE_Total AS t
+INNER JOIN CTE_Aggr AS a
+ON a.[year] = t.[year]
+INNER JOIN per_capita AS g
+ON g.[year] = a.[year]
+
+----
+
+4a. What is the COUNT of countries and 
+	SUM of their related gdp_per_capita values for the 
+	year 2007 
+	where the string 'an' (case insensitive) 
+	appears anywhere in the country name?
+WITH CTE_GDP AS (
+SELECT 
+	COUNT(country_name) AS 'Num'
+	,[year]
+	,ROUND(SUM(cap.gdp_per_capita),2) AS 'GDP' 
+FROM per_capita AS cap
+INNER JOIN countries as coun
+ON coun.country_code = cap.country_code 
+WHERE [year] = 2007
+AND [coun].[country_name] LIKE '%an%'
+GROUP BY [year]
+)
+SELECT 
+	 [Num] As 'Num Countries With "AN"'
+	,[year] AS 'Year'
+	,FORMAT([GDP],'$#,###,###.##') AS 'Total GDP'
+FROM CTE_GDP
+
+4b. Repeat question 4a, but this time make the query 
+	case sensitive.
+
+Just need to change the WHERE/AND statement to this to do a case sensitive search. Fairly simple.
+AND [coun].[country_name] COLLATE Latin1_General_CS_AS LIKE '%an%'
+
+5. Find the SUM of gpd_per_capita 
+	by year 
+	and the COUNT of countries 
+	for each year that have non-null gdp_per_capita 
+	where (i) the year is before 2012 
+	and (ii) the country has a null gdp_per_capita in 2012. 
+	
+Your result should have the columns:
+
+    year
+    country_count
+    total
+
+Had to create 2 CTEs for aggr functions and then combine them to be able to get the yearly sum of gdp per capita per year. First had to get the list of countries that where NULL in 2012  using a CASE function and then once I got that list I had to exclude countries that had NULLs throughout the selected years. Then in the last part of the statement I can GORUP BY year and find the COUNT of countries in each year as well as the SUM of gdp in each year for that list of countries
+WITH CTE_Countries AS (
+SELECT * 
+FROM per_capita
+WHERE(
+	CASE
+		WHEN [year] = 2012 AND gdp_per_capita = 0
+		THEN 'yes'
+		ELSE 'no'
+	END
+	) = 'yes'
+)
+, CTE_Count AS (
+SELECT
+	 g.[year]
+	,CASE
+		WHEN g.gdp_per_capita = 0
+		THEN NULL
+		ELSE g.country_code
+	 END AS 'coun' 
+	,g.gdp_per_capita
+FROM CTE_Countries AS c
+INNER JOIN per_capita AS g
+ON g.[country_code] = c.[country_code]
+WHERE g.country_code = c.country_code
+AND g.[year] <  2012
+)
+
+SELECT cnt.[year] AS 'Year'
+	,COUNT(cnt.coun) 'Count'
+	,FORMAT(SUM(cnt.gdp_per_capita),'$###,###.00') AS 'Yearly GDP'
+FROM CTE_Countries AS c
+INNER JOIN CTE_Count AS cnt
+ON c.country_code = cnt.coun
+GROUP BY cnt.[year]
+
+6. All in a single query, execute all of the steps below and provide the results as your final answer:
+
+a) create a single list of all per_capita records for year 2009 that includes columns:
+    continent_name
+    country_code
+    country_name
+    gdp_per_capita
+
+Just got to join the tables, select the correct columns, and do the correct WHERE clause
+SELECT con.continent_name
+	,c.country_code
+	,c.country_name
+	,FORMAT(g.gdp_per_capita,'$###,###.00') AS 'Total GDP'
+FROM per_capita AS g
+INNER JOIN countries AS c
+ON c.country_code = g.country_code
+INNER JOIN continent_map AS m
+ON m.country_code = c.country_code
+INNER JOIN continents AS con
+ON con.continent_code = m.continent_code
+WHERE g.[year] = 2009
+
+b) order this list by:
+continent_name ASC characters 2 through 4 (inclusive) of the country_name DESC
+
+Just add on a simple ORDER BY statement and parse the continent name using SUBSTRING()
+ORDER BY SUBSTRING(con.continent_name,2,3) ASC
+	,c.country_name DESC
+
+c. create a running total of gdp_per_capita by continent_name
+
+Creating a cumsum or cumulitive sum / rolling total
+using the SUM() OVER() and ORDER BY clauses to create a cumulitive sum across the continent name
+SELECT con.continent_name
+	,c.country_code
+	,c.country_name
+	,FORMAT(g.gdp_per_capita,'$###,###.00') AS 'Total GDP'
+	,FORMAT(SUM(g.gdp_per_capita) OVER (
+			PARTITION BY con.continent_name
+			ORDER BY c.country_name DESC)
+			,'$###,###.00') AS 'Running Total'
+FROM per_capita AS g
+INNER JOIN countries AS c
+ON c.country_code = g.country_code
+INNER JOIN continent_map AS m
+ON m.country_code = c.country_code
+INNER JOIN continents AS con
+ON con.continent_code = m.continent_code
+WHERE g.[year] = 2009
+ORDER BY SUBSTRING(con.continent_name,2,3) ASC
+	,c.country_name DESC'
+
+d. return only the first record from the ordered list for which each continent's running total of gdp_per_capita meets or exceeds $70,000.00 with the following columns:
+    continent_name
+    country_code
+    country_name
+    gdp_per_capita
+    running_total
+
+Had to do 2 CTEs one with the running total, the second with a rank row, and then select the top 6 with rank as 1 to get the correct countries
+WITH CTE_CumSum AS (
+SELECT con.continent_name
+	,c.country_code
+	,c.country_name
+	,g.gdp_per_capita
+	,g.[year]
+	,SUM(g.gdp_per_capita) OVER (
+			PARTITION BY con.continent_name
+			ORDER BY c.country_name DESC) AS 'CumSum'
+FROM per_capita AS g
+INNER JOIN countries AS c
+ON c.country_code = g.country_code
+INNER JOIN continent_map AS m
+ON m.country_code = c.country_code
+INNER JOIN continents AS con
+ON con.continent_code = m.continent_code
+WHERE g.[year] = 2009
+
+)
+
+,CTE_Rank AS (
+SELECT *
+	,ROW_NUMBER() OVER(
+		PARTITION BY c.continent_name
+		ORDER BY c.cumsum) AS 'Rank'
+FROM CTE_CumSum AS c
+WHERE c.CumSum > 70000
+)
+SELECT TOP 6 r.continent_name
+			,r.country_code
+			,r.country_name
+			,FORMAT(r.gdp_per_capita,'$###,###.00') AS gdp_per_capita
+			,FORMAT(r.CumSum,'$###,###.00') AS running_total
+FROM CTE_Rank AS r
+INNER JOIN CTE_CumSum AS c
+ON c.[year] = r.[year]
+WHERE r.rank = 1
+ORDER BY SUBSTRING(c.continent_name,2,3) ASC
+	,c.country_name DESC
+
+
+7. Find the country 
+	with the highest AVG gdp_per_capita 
+	for each continent 
+	for all years.
+
+Used 2 CTEs again. First used one to create the avg gdp quantity then the next one to create the partitioned rank column and then selected all of that in an ordered list by continent name DESC where rank was 1 
+WITH CTE_gdp AS (
+SELECT	 con.continent_name
+		,c.country_name
+		,SUM(g.[gdp_per_capita]) / 9 AS 'gdp'
+FROM per_capita AS g
+INNER JOIN countries AS c
+ON c.country_code = g.country_code
+INNER JOIN continent_map AS m
+ON m.country_code = c.country_code
+INNER JOIN continents AS con
+ON con.continent_code = m.continent_code
+GROUP BY c.country_name
+		,con.continent_name
+		)
+,CTE_Rank AS (
+SELECT *
+	,ROW_NUMBER() OVER(
+		PARTITION BY g.continent_name
+		ORDER BY g.gdp DESC) AS 'Rank'
+FROM CTE_gdp AS g
+		)
+SELECT
+			 r.continent_name
+			,r.country_name
+			,FORMAT(r.gdp,'$###,###.00') AS avg_gdp
+FROM CTE_Rank AS r
+INNER JOIN CTE_gdp AS g
+ON g.country_name = r.country_name
+WHERE r.[rank] = 1
+ORDER BY r.continent_name
+		,r.gdp DESC
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
