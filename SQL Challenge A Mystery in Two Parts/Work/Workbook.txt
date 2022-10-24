@@ -1,0 +1,260 @@
+
+-- Data Modeling
+
+--First I created the tables that coincided with my database diagram:
+ CREATE TABLE departments
+(
+    dept_no varchar(50)             NOT NULL    PRIMARY KEY,
+    dept_name    varchar(255)        NOT NULL
+
+);
+
+CREATE TABLE dept_emp
+(
+     emp_no int NOT NULL
+    ,dept_no varchar(50)        
+	,from_date date
+	,to_date date
+
+);
+
+CREATE TABLE dept_manager
+(
+     dept_no varchar(50)        
+	,emp_no int NOT NULL
+	,from_date date
+	,to_date date
+
+);
+
+CREATE TABLE employees
+(
+	 emp_no int NOT NULL
+	,birth_date date
+	,first_name varchar(255)
+	,last_name varchar(255)
+	,gender varchar(1)
+	,hire_date date
+);
+
+CREATE TABLE salaries
+(
+	 emp_no int NOT NULL
+	,salary int
+	,from_date date
+	,to_date date
+);
+
+CREATE TABLE titles
+(
+	 emp_no int NOT NULL
+	,title varchar(255)
+	,from_date date
+	,to_date date
+);
+
+----
+
+-- Data Engineering
+
+--Then I did a data import task for each file seperately to put them into the database
+--Had an issue using the data import task with the date columns, so I wen tand changed the 'Design' of each table and changed the data types of all date columns to varchar(50)
+-- unable to import the dept_emp table because the FK restraint failed meaning I need to import the employees table first
+-- employees table went through fine
+-- retrying the dept_emp table to see if that fixed the issue
+-- went through fine, so alwyas import PK's first before FK's
+-- all files imported
+
+----
+
+-- Data Analysis
+
+-- 1. List the following details of each employee: employee number, last name, first name, gender, and salary.
+
+--Gender didn't import correctly because I changed it to varchar(1) previously so I am going have to drop the table,change the table design, and reimport the csv.
+-- None of that worked because of the PK constraint blocking it, so I will import the csv to a temp import table, then copy the Gender column from there and drop that temp table
+
+UPDATE [employees]
+SET [gender] = 'M'
+FROM [employees]
+INNER JOIN [temp_employees] AS t
+ON [employees].emp_no = t.["emp_no"]
+WHERE t.["gender"] = '"M"'
+
+-- it appears that I messed something up during the data import task as some of these columns have "" marks around the rows of data, might be possibly because I kept them as varchar instead of nvarchar, but not sure.
+-- will update later if need be.  
+
+1. 
+
+SELECT TOP 100 
+	 e.emp_no
+	,e.last_name
+	,e.first_name
+	,e.gender
+	,s.salary
+FROM [employees] AS e
+INNER JOIN salaries AS s
+ON e.emp_no = s.emp_no
+
+--
+
+-- 2. List employees who were hired in 1986.
+
+-- Had to remove the quote marks from the date column to be able to do this easily, so I removed them all using a query like this:
+
+UPDATE employees
+SET hire_date = TRIM('"' FROM hire_date)
+
+-- and just changed the parameter for each column
+
+-- List employees who were hired in 1986.
+
+SELECT first_name
+		,last_name
+FROM employees
+WHERE LEFT(hire_date,4) = 1986
+
+/* 3. List the manager of each department with the following information: 
+	department number, 
+	department name, 
+	the managers employee number, 
+	last name, 
+	first name, 
+	and start 
+	and end employment dates.
+	*/
+
+-- using the INNER JOIN for the dept_manager table makes it so that only managers will get pulled up
+
+SELECT  
+	 m.dept_no
+	,d.dept_name
+	,m.emp_no
+	,e.last_name
+	,e.first_name
+	,m.from_date
+	,m.to_date
+FROM employees AS e
+INNER JOIN dept_manager AS m
+ON e.emp_no = m.emp_no
+INNER JOIN dept_emp AS de
+ON de.emp_no = m.emp_no
+INNER JOIN departments AS d
+ON d.dept_no = de.dept_no
+
+----
+
+/* 4. List the department of each employee with the following information:
+employee number, 
+last name, 
+first name, 
+and department name.
+*/
+
+SELECT  
+	 e.emp_no
+	,e.last_name
+	,e.first_name
+	,d.dept_name
+FROM employees AS e
+INNER JOIN dept_emp AS de
+ON de.emp_no = e.emp_no
+INNER JOIN departments AS d
+ON d.dept_no = de.dept_no
+
+----
+
+-- 5. List all employees whose first name is "Hercules" and last names begin with "B."
+
+SELECT  
+	 first_name
+	,last_name
+FROM employees 
+WHERE first_name = 'Hercules'
+AND last_name LIKE 'B%'
+
+----
+
+/*- 6. List all employees in the 
+	Sales department, 
+	including their employee number, 
+	last name, 
+	first name, and 
+	department name.
+*/
+
+SELECT  
+	 e.emp_no
+	,e.last_name
+	,e.first_name
+	,d.dept_name
+FROM employees AS e
+INNER JOIN dept_emp AS de
+ON e.emp_no = de.emp_no
+INNER JOIN departments AS d
+ON d.dept_no = de.dept_no
+WHERE dept_name = '"Sales"'
+
+----
+
+-- 7. List all employees in the Sales and Development departments, including their employee number, last name, first name, and department name.
+
+SELECT  
+	 e.emp_no
+	,e.last_name
+	,e.first_name
+	,d.dept_name
+FROM employees AS e
+INNER JOIN dept_emp AS de
+ON e.emp_no = de.emp_no
+INNER JOIN departments AS d
+ON d.dept_no = de.dept_no
+WHERE dept_name = '"Sales"'
+OR dept_name = '"Development"'
+
+----
+
+/* 8. In descending order, 
+		list the frequency count of employee last names,
+		i.e., how many employees share each last name.
+*/
+
+SELECT last_name
+	,COUNT(last_name) AS 'Cnt'
+FROM employees
+GROUP BY last_name
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
