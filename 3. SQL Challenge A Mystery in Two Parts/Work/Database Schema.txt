@@ -1,0 +1,79 @@
+A Mystery in Two Parts - Database Schema
+
+departments
+-----------
+dept_no PK varchar(50)
+dept_name varchar(255)
+
+dept_emp
+--------
+emp_no FK >- employees.emp_no
+dept_no FK >- departments.dept_no
+from_date date
+to_date date
+
+dept_manager 
+------------
+dept_no FK >- departments.dept_no
+emp_no FK >- employees.emp_no
+from_date date
+to_date date
+
+
+employees 
+---------
+emp_no PK int
+birth_date date
+first_name string
+last_name string
+gender varchar(1)
+hire_date date
+
+salaries
+--------
+emp_no FK >- employees.emp_no
+salary money
+from_date date
+to_date date
+
+titles
+------
+emp_no FK >- employees.emp_no
+title varchar(255)
+from_date date
+to_date date
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
